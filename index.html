@@ -1,0 +1,515 @@
+<html>
+
+<head>
+    <title>Index</title>
+</head>
+
+<body>
+    <header>
+    </header>
+    <main>
+        <input type="file" id="file" accept=".csv" onchange={loadSurface(event)} />
+        <div id="main">
+            <div>
+                <div id="data">
+                    <h3 id="velocity"></h3>
+                    <h3 id="distanceEarth"></h3>
+                    <h3 id="distanceMoon"></h3>
+                </div>
+
+                <div id="help">
+                    <h2>How to use:</h2>
+                    <h3>Move view:</h3>
+                    <table>
+                        <tbody>
+                            <tr>
+                                <td class="help">Q</td>
+                                <td class="help">W</td>
+                                <td class="help">E</td>
+                            </tr>
+                            <tr>
+                                <td class="help">A</td>
+                                <td class="help"></td>
+                                <td class="help">D</td>
+                            </tr>
+                            <tr>
+                                <td class="help"></td>
+                                <td class="help">S</td>
+                                <td class="help"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <h3>Move launch site:</h3>
+                    <table>
+                        <tbody>
+                            <tr>
+                                <td class="help"></td>
+                                <td class="help">I</td>
+                                <td class="help"></td>
+                            </tr>
+                            <tr>
+                                <td class="help">J</td>
+                                <td class="help"></td>
+                                <td class="help">L</td>
+                            </tr>
+                            <tr>
+                                <td class="help"></td>
+                                <td class="help">K</td>
+                                <td class="help"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <h3>Initial speed:</h3>
+                    <p>V: increase</p>
+                    <p>B: decrease</p>
+                    <h3>Launch type:</h3>
+                    <p>H: horizontal</p>
+                    <p>" ": vertical</p>
+                    <p>C: clear graph</p>
+                </div>
+                <canvas id="myCanvas"></canvas>
+            </div>
+        </div>
+    </main>
+    <footer>
+    </footer>
+</body>
+
+</html>
+
+<style>
+    #main {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+    }
+
+    #myCanvas {
+        width: 1200px;
+        height: 650px;
+        background-color: rgb(47, 47, 47);
+    }
+
+    #data {
+        position: absolute;
+        top: 50px;
+        left: 150px;
+        color: green;
+    }
+
+    #help {
+        position: absolute;
+        top: 50px;
+        left: 1170px;
+        color: green;
+    }
+
+    .help {
+        color: green;
+        width: 25px;
+        height: 25px;
+    }
+</style>
+
+<script>
+
+    const data = Data()
+
+    //--------------------------
+    function parseCSV(text) {
+        let lines = text.replace(/\r/g, '').split('\n');
+        return lines.map(line => {
+            let values = line.split(',');
+            return values;
+        });
+    }
+
+    function readFile(evt) {
+        let data
+        let file = evt.target.files[0];
+        let reader = new FileReader();
+        reader.onload = (e) => {
+            data = parseCSV(e.target.result);
+            data = formatData(data)
+        };
+        reader.readAsBinaryString(file);
+        return data
+    }
+
+    function formatData(data) {
+        formatedData = []
+        data.map((point, index) => {
+            if (index % 4 == 0) {
+                formatedData.push(
+                    {
+                        lat: point[1],
+                        lon: point[2],
+                        color: point[3]
+                    }
+                )
+            }
+        })
+        return formatedData
+    }
+
+
+    //---------------------
+
+    class Gravity {
+        t = 1
+        constructor(gravity) { this.g = gravity }
+
+        velocityVector(point1, point2, mass1, mass2) {
+            if (point1 !== point2) {
+                let d = this.distance(point1, point2)
+                let ax = this.axisGravity('x', d, point1, point2, mass1, mass2),
+                    ay = this.axisGravity('y', d, point1, point2, mass1, mass2),
+                    az = this.axisGravity('z', d, point1, point2, mass1, mass2)
+
+                point1.x += point1.vx * this.t + 0.5 * ax * Math.pow(this.t, 2);
+                point1.y += point1.vy * this.t + 0.5 * ay * Math.pow(this.t, 2);
+                point1.z += point1.vz * this.t + 0.5 * az * Math.pow(this.t, 2);
+                point1.vx += ax * this.t;
+                point1.vy += ay * this.t;
+                point1.vz += az * this.t;
+            }
+            return point1
+        }
+
+        axisGravity(axis, d, point1, point2, mass1, mass2) {
+            return (-this.g * mass2 * (point1[axis] - point2[axis])) / Math.pow(d, 3 / 2);
+        }
+
+        distance(point1, point2) {
+            return Math.pow(
+                Math.pow(point1.x - point2.x, 2) +
+                Math.pow(point1.y - point2.y, 2) +
+                Math.pow(point1.z - point2.z, 2),
+                1 / 2
+            )
+        }
+
+        gravitacionalField(bodies) {
+            bodies.forEach((body) => {
+                for (let i = 0; i < bodies.length; i++) {
+                    body.position = this.velocityVector(body.position, bodies[i].position, body.mass, bodies[i].mass)
+                }
+            })
+            return bodies
+        }
+    }
+
+    class Body {
+        surfacePoints = []
+        cartesians = []
+
+        constructor(surface) {
+            this.surfacePoints = surface.map(point => {
+                point.lat = point.lat + 90
+                point.lon = -point.lon + 180
+                return {
+                    lat: point.lat * 2 * Math.PI / 360,
+                    lon: point.lon * 2 * Math.PI / 360
+                }
+            });
+            if (surface.length == 0) {
+                this.createLatitudLines()
+                this.createLongitudLines()
+            }
+        }
+
+        createLatitudLines() {
+            for (let lon = 0; lon < 1; lon += 0.2) {
+                for (let lat = 0; lat <= 2.04; lat += 0.04) {
+                    this.surfacePoints.push({
+                        lat: lat * Math.PI,
+                        lon: lon * Math.PI,
+                        color: 'green'
+                    })
+                }
+            }
+        }
+
+        createLongitudLines() {
+            for (let lat = 0; lat < 2; lat += 0.1) {
+                for (let lon = 0; lon < 1.04; lon += 0.04) {
+                    this.surfacePoints.push({
+                        lat: lat * Math.PI,
+                        lon: lon * Math.PI
+                    })
+                }
+            }
+        }
+
+        convertToCartesians(surfacePoints) {
+            let cartesians = []
+            surfacePoints.map((point) => {
+                cartesians.push({
+                    x: Math.sin(point.lat) * Math.cos(point.lon),
+                    y: Math.cos(point.lat),
+                    z: Math.sin(point.lat) * Math.sin(point.lon),
+                    color: point.color
+                })
+            })
+            return cartesians
+        }
+    }
+
+    class Dinamics {
+        rotate(sfere, axis, alfa) {
+            return sfere.map((point) => {
+                let x = point.x, y = point.y, z = point.z
+                let cos = Math.cos(alfa), sin = Math.sin(alfa)
+                return this.rotatePoint(x, y, z, sin, cos, axis)
+            });
+        }
+
+        rotatePoint(x, y, z, sin, cos, axis) {
+            let isX = axis == 'x', isY = axis == 'y'
+            return {
+                x: isX ? x /*           */ : isY ? cos * x - sin * z : cos * x - sin * y,
+                y: isX ? cos * y - sin * z : isY ? y /*           */ : sin * x + cos * y,
+                z: isX ? sin * y + cos * z : isY ? sin * x + cos * z : z /*           */
+            }
+        }
+    }
+
+    class Planet extends Body {
+        dinamics = new Dinamics()
+        axisRotation = { x: 0, y: 1, z: 0 }
+        targets = []
+
+        constructor(surface, size, mass, position, vRotation, colorSurface, colorLines) {
+            super(surface)
+            this.size = size
+            this.mass = mass
+            this.position = position
+            this.vRotation = vRotation
+            this.colorSurface = colorSurface
+            this.colorLines = colorLines
+            this.cartesians = this.convertToCartesians(this.surfacePoints)
+            this.cartesians.map(point => {
+                point.x = point.x * size
+                point.y = point.y * size
+                point.z = point.z * size
+            })
+        }
+
+        addTarget(targets) {
+            this.targets = this.convertToCartesians(targets)
+            this.targets.map(point => {
+                point.x = point.x * this.size
+                point.y = point.y * this.size
+                point.z = point.z * this.size
+            })
+        }
+
+        launchTarget(speed, orbit) {
+            let x = this.targets[0].x
+            let y = this.targets[0].y
+            let z = this.targets[0].z
+            let direction = { x: x * speed + this.position.vx, y: y * speed + this.position.vy, z: z * speed + this.position.vz }
+            if (orbit) { direction = this.rotate(Math.PI / 2, [direction])[0] }
+
+            let position = {
+                x: x + this.position.x,
+                y: y + this.position.y,
+                z: z + this.position.z,
+                vx: direction.x,
+                vy: direction.y,
+                vz: direction.z
+            }
+
+            let rocket = new Planet([{ lat: 0, lon: 0 }], 1, 0.1, position, 0, 'black', 'black')
+
+            return rocket
+        }
+
+        rotatePosition(axis, alfa) {
+            this.cartesians = dinamics.rotate(this.cartesians, axis, alfa)
+            this.targets = dinamics.rotate(this.targets, axis, alfa)
+            let p = dinamics.rotatePoint(this.position.x, this.position.y, this.position.z, Math.sin(alfa), Math.cos(alfa), axis)
+            let v = dinamics.rotatePoint(this.position.vx, this.position.vy, this.position.vz, Math.sin(alfa), Math.cos(alfa), axis)
+            this.position = { x: p.x, y: p.y, z: p.z, vx: v.x, vy: v.y, vz: v.z }
+            this.axisRotation = dinamics.rotatePoint(this.axisRotation.x, this.axisRotation.y, this.axisRotation.z, Math.sin(alfa), Math.cos(alfa), axis)
+        }
+
+        rotate(alfa, cartesians) {
+            let cos = Math.cos(alfa), sin = Math.sin(alfa)
+            let ux = this.axisRotation.x, uy = this.axisRotation.y, uz = this.axisRotation.z
+            return cartesians.map((point) => {
+                let x = point.x, y = point.y, z = point.z, c = 1 - cos
+                return ({
+                    x: x * (cos + ux * ux * c) + y * (ux * uy * c - uz * sin) + z * (ux * uz * c + uy * sin),
+                    y: y * (cos + uy * uy * c) + z * (uy * uz * c - ux * sin) + x * (ux * uy * c + uz * sin),
+                    z: z * (cos + uz * uz * c) + x * (ux * uz * c - uy * sin) + y * (uy * uz * c + ux * sin)
+                })
+            });
+        }
+
+    }
+
+    const dinamics = new Dinamics()
+    const gravity = new Gravity(data.G)
+
+    let earth = new Planet([], data.earth.r / 150, data.earth.m, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: -0.3 }, -0.05, 'rgb(125, 189, 242)', 'green')
+    let moon = new Planet([], data.moon.r / 150, data.moon.m * 30, { x: data.distanceMoon_Eart / 3000, y: 0, z: 0, vx: 0, vy: 0, vz: 0.3 * 2.7 }, -0.002, 'rgb(234, 234, 234)', 'grey')
+    let planets = [earth, moon]
+
+
+    let satellites = []
+    earth.addTarget([{ lat: 40, lon: 3.2 }])
+
+    let velocity = 0.07
+
+    let printEarth = document.getElementById('distanceEarth')
+    let printMoon = document.getElementById('distanceMoon')
+    let printVelocity = document.getElementById('velocity')
+
+    let canvas = document.getElementById('myCanvas')
+    let ctx = canvas.getContext('2d')
+    canvas.width = 600
+    canvas.height = 325
+    lineData = []
+
+    setInterval(() => {
+        draw()
+    }, 80)
+
+    
+    document.addEventListener('keydown', (e) => {
+        const rotate = (a, b) => {
+            planets.forEach(planet => { planet.rotatePosition(a, b) })
+            satellites.forEach(planet => { planet.rotatePosition(a, b) })
+        }
+        switch (e.key) {
+            case 'w': rotate('x', 0.1); break
+            case 's': rotate('x', -0.1); break
+            case 'a': rotate('y', 0.1); break
+            case 'd': rotate('y', -0.1); break
+            case 'e': rotate('z', 0.1); break
+            case 'q': rotate('z', -0.1); break
+            case 'v': velocity += 0.01; break
+            case 'b': velocity -= 0.01; break
+            case ' ': satellites.push(earth.launchTarget(velocity / 5, false)); lineData = []; break
+            case 'k': earth.targets = dinamics.rotate(earth.targets, 'x', -0.1); break
+            case 'l': earth.targets = dinamics.rotate(earth.targets, 'y', -0.1); break
+            case 'i': earth.targets = dinamics.rotate(earth.targets, 'x', 0.1); break
+            case 'j': earth.targets = dinamics.rotate(earth.targets, 'y', 0.1); break
+            case 'h': satellites.push(earth.launchTarget(velocity / 5, true)); lineData = []; break
+            case 'c': lineData = []; break
+            case 'p': earth.cartesians = earth.convertToCartesians(formatedData);
+            earth.cartesians.map(point => {
+                point.x = point.x * earth.size
+                point.y = point.y * earth.size
+                point.z = point.z * earth.size
+            })
+                break
+        }
+    })
+
+    function loadSurface(event){
+        earth.cartesians = earth.convertToCartesians(readFile(event));
+                earth.cartesians.map(point => {
+                    point.x = point.x * earth.size
+                    point.y = point.y * earth.size
+                    point.z = point.z * earth.size
+                })
+    }
+
+    function draw() {
+        let allPlanets = planets.concat(satellites)
+        allPlanets.sort((a, b) => { return a.position.z - b.position.z })
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        action(allPlanets)
+
+        satellites.forEach((planet, index) => {
+            let distance1 = gravity.distance(planet.position, earth.position) - earth.size
+            let distance2 = gravity.distance(planet.position, moon.position) - moon.size
+            if (distance1 < 0 || distance2 < 0) { satellites.splice(index, 1) }
+        })
+        allPlanets = gravity.gravitacionalField(allPlanets)
+
+        printVelocity.innerHTML = 'velocity: ' + parseInt(velocity * 1000) + 'km/s2'
+        if (satellites.length > 0) {
+            printEarth.innerHTML = 'distance to Earth: ' + parseInt(gravity.distance(satellites[0].position, earth.position) - earth.size) * 3000 + 'km'
+            printMoon.innerHTML = 'distance to Moon: ' + parseInt(gravity.distance(satellites[0].position, moon.position) * 3000) + 'km'
+            lineData.push(gravity.distance(satellites[0].position, earth.position) - earth.size)
+        }
+
+        let graph = altitudGraph(lineData)
+        ctx.strokeStyle = 'green'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        for (let i = 1; i < graph.length; i++) {
+            ctx.moveTo(graph[i - 1].x + 10, canvas.height - graph[i - 1].y - 10)
+            ctx.lineTo(graph[i].x + 10, canvas.height - graph[i].y - 10)
+        }
+        ctx.stroke()
+    }
+
+
+    function drawObject(ctx, object, w, h) {
+        ctx.lineWidth = 0.5
+        ctx.fillStyle = object.colorSurface
+        ctx.strokeStyle = object.colorLines
+        ctx.beginPath()
+        ctx.arc(object.position.x + w / 2, object.position.y + h / 2, object.size+1, 0, 2 * Math.PI, false)
+        ctx.fill();
+
+        for (let i = 1; i < object.cartesians.length; i++) {
+            if (object.cartesians[i].z > 0) {
+                ctx.beginPath()
+                ctx.arc(object.cartesians[i].x + object.position.x + w / 2, object.cartesians[i].y + object.position.y + h / 2, 0.1, 0, 2 * Math.PI, false)
+                ctx.fill()
+                ctx.stroke()
+            }
+        }
+        object.targets.forEach(target => {
+            if (target.z > 0) {
+                ctx.beginPath()
+                ctx.strokeStyle = 'black'
+                ctx.lineWidth = 1
+                ctx.moveTo(target.x + object.position.x + w / 2, target.y + object.position.y + h / 2)
+                ctx.lineTo(target.x * 1.1 + object.position.x + w / 2, target.y * 1.1 + object.position.y + h / 2)
+                ctx.stroke()
+            }
+        })
+
+    }
+
+    function action(planets) {
+        planets.forEach((planet) => {
+            planet.cartesians = planet.rotate(planet.vRotation, planet.cartesians)
+            planet.targets = planet.rotate(planet.vRotation, planet.targets)
+            drawObject(ctx, planet, canvas.width, canvas.height)
+        })
+    }
+
+    function Data() {
+        class Data {
+            earth = {
+                r: 6371,
+                m: 597 * Math.pow(10, 0.5)
+            }
+            moon = {
+                r: 1740,
+                m: 7.35 * Math.pow(10, 0.5)
+            }
+            distanceMoon_Eart = 384400
+            G = 6.67 * Math.pow(10, -5)
+ 
+        }
+        return new Data()
+    }
+
+    function altitudGraph(data) {
+        let line = []
+        data.forEach((n, i) => {
+            line.push({ x: i, y: n })
+        })
+        return line
+    }
+
+</script>
