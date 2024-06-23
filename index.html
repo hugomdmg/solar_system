@@ -8,7 +8,7 @@
     <header>
     </header>
     <main>
-        <input type="file" id="file" accept=".csv" onchange={loadSurface(event)} />
+        <input type="file" id="file" accept=".csv" onchange={readFile(event)} />
         <div id="main">
             <div>
                 <div id="data">
@@ -132,13 +132,18 @@
         reader.onload = (e) => {
             data = parseCSV(e.target.result);
             data = formatData(data)
+            earth.cartesians = earth.convertToCartesians(data);
+            earth.cartesians.map(point => {
+                point.x = point.x * earth.size
+                point.y = point.y * earth.size
+                point.z = point.z * earth.size
+            })
         };
         reader.readAsBinaryString(file);
-        return data
     }
 
     function formatData(data) {
-        formatedData = []
+        let formatedData = []
         data.map((point, index) => {
             if (index % 4 == 0) {
                 formatedData.push(
@@ -152,7 +157,6 @@
         })
         return formatedData
     }
-
 
     //---------------------
 
@@ -353,8 +357,8 @@
     const dinamics = new Dinamics()
     const gravity = new Gravity(data.G)
 
-    let earth = new Planet([], data.earth.r / 150, data.earth.m, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: -0.3 }, -0.05, 'rgb(125, 189, 242)', 'green')
-    let moon = new Planet([], data.moon.r / 150, data.moon.m * 30, { x: data.distanceMoon_Eart / 3000, y: 0, z: 0, vx: 0, vy: 0, vz: 0.3 * 2.7 }, -0.002, 'rgb(234, 234, 234)', 'grey')
+    let earth = new Planet([], data.earth.r / 150, data.earth.m, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0.3 }, 0.05, 'rgb(125, 189, 242)', 'green')
+    let moon = new Planet([], data.moon.r / 150, data.moon.m * 30, { x: data.distanceMoon_Eart / 3000, y: 0, z: 0, vx: 0, vy: 0, vz: -0.3 * 2.7 }, 0.002, 'rgb(234, 234, 234)', 'grey')
     let planets = [earth, moon]
 
 
@@ -377,7 +381,7 @@
         draw()
     }, 80)
 
-    
+
     document.addEventListener('keydown', (e) => {
         const rotate = (a, b) => {
             planets.forEach(planet => { planet.rotatePosition(a, b) })
@@ -399,24 +403,9 @@
             case 'j': earth.targets = dinamics.rotate(earth.targets, 'y', 0.1); break
             case 'h': satellites.push(earth.launchTarget(velocity / 5, true)); lineData = []; break
             case 'c': lineData = []; break
-            case 'p': earth.cartesians = earth.convertToCartesians(formatedData);
-            earth.cartesians.map(point => {
-                point.x = point.x * earth.size
-                point.y = point.y * earth.size
-                point.z = point.z * earth.size
-            })
-                break
         }
     })
 
-    function loadSurface(event){
-        earth.cartesians = earth.convertToCartesians(readFile(event));
-                earth.cartesians.map(point => {
-                    point.x = point.x * earth.size
-                    point.y = point.y * earth.size
-                    point.z = point.z * earth.size
-                })
-    }
 
     function draw() {
         let allPlanets = planets.concat(satellites)
@@ -455,7 +444,7 @@
         ctx.fillStyle = object.colorSurface
         ctx.strokeStyle = object.colorLines
         ctx.beginPath()
-        ctx.arc(object.position.x + w / 2, object.position.y + h / 2, object.size+1, 0, 2 * Math.PI, false)
+        ctx.arc(object.position.x + w / 2, object.position.y + h / 2, object.size + 1, 0, 2 * Math.PI, false)
         ctx.fill();
 
         for (let i = 1; i < object.cartesians.length; i++) {
@@ -499,7 +488,7 @@
             }
             distanceMoon_Eart = 384400
             G = 6.67 * Math.pow(10, -5)
- 
+
         }
         return new Data()
     }
